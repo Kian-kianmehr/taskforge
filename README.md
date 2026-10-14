@@ -8,6 +8,7 @@ A project management REST API built with Django and Django REST Framework.
 - Django
 - Django REST Framework
 - Git & GitHub
+- PostgreSQL
 
 ## Overview
 
