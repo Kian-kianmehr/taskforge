@@ -186,3 +186,113 @@ class MeViewTests(TestCase):
             response.data["email"],
             "another@example.com",
         )
+
+
+
+
+class ChangePasswordTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email="password-test@example.com",
+            display_name="Password Test",
+            password="CurrentPassword123!",
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+        self.url = "/accounts/change-password/"
+
+    def test_change_password_successfully(self):
+        response = self.client.post(
+            self.url,
+            {
+                "old_password": "CurrentPassword123!",
+                "new_password": "NewPassword456!",
+                "confirm_new_password": "NewPassword456!",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("NewPassword456!"))
+        self.assertFalse(self.user.check_password("CurrentPassword123!"))
+        self.assertNotEqual(
+            self.user.password,
+            "NewPassword456!",
+        )
+
+    def test_change_password_with_wrong_old_password(self):
+        response = self.client.post(
+            self.url,
+            {
+                "old_password": "WrongPassword123!",
+                "new_password": "NewPassword456!",
+                "confirm_new_password": "NewPassword456!",
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_400_BAD_REQUEST,
+        )
+
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("CurrentPassword123!"))
+
+    def test_change_password_with_mismatched_new_passwords(self):
+        response = self.client.post(
+            self.url,
+            {
+                "old_password": "CurrentPassword123!",
+                "new_password": "NewPassword456!",
+                "confirm_new_password": "DifferentPassword789!",
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_400_BAD_REQUEST,
+        )
+
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("CurrentPassword123!"))
+
+    def test_change_password_without_authentication(self):
+        client = APIClient()
+
+        response = client.post(
+            self.url,
+            {
+                "old_password": "CurrentPassword123!",
+                "new_password": "NewPassword456!",
+                "confirm_new_password": "NewPassword456!",
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_401_UNAUTHORIZED,
+        )
+
+    def test_change_password_with_invalid_new_password(self):
+        response = self.client.post(
+            self.url,
+            {
+                "old_password": "CurrentPassword123!",
+                "new_password": "123",
+                "confirm_new_password": "123",
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_400_BAD_REQUEST,
+        )
+
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("CurrentPassword123!"))
