@@ -1,8 +1,11 @@
-
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework.test import APIClient
+from rest_framework import status
+from rest_framework_simplejwt.tokens import RefreshToken
 
+
+User = get_user_model()
 
 class RegisterTests(TestCase):
     def setUp(self):
@@ -127,3 +130,59 @@ class LoginTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("access", response.data)
+
+class MeViewTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            email="kian@example.com",
+            password="TestPassword123!",
+            display_name="Kian",
+        )
+
+    def authenticate(self, user):
+        refresh = RefreshToken.for_user(user)
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {refresh.access_token}"
+        )
+
+    def test_me_returns_authenticated_user_profile(self):
+        self.authenticate(self.user)
+
+        response = self.client.get("/accounts/me/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["id"], self.user.id)
+        self.assertEqual(response.data["email"], self.user.email)
+        self.assertEqual(
+            response.data["display_name"],
+            self.user.display_name,
+        )
+        self.assertIn("created_at", response.data)
+
+    def test_me_requires_authentication(self):
+        response = self.client.get("/accounts/me/")
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_401_UNAUTHORIZED,
+        )
+
+    def test_me_returns_only_authenticated_users_profile(self):
+        self.authenticate(self.user)
+
+        User.objects.create_user(
+            email="another@example.com",
+            password="AnotherPassword123!",
+            display_name="Another User",
+        )
+
+        response = self.client.get("/accounts/me/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["id"], self.user.id)
+        self.assertEqual(response.data["email"], self.user.email)
+        self.assertNotEqual(
+            response.data["email"],
+            "another@example.com",
+        )
