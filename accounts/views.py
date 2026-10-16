@@ -6,6 +6,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.generics import RetrieveAPIView
 from .serializers import UserProfileSerializer
 from .serializers import ChangePasswordSerializer
+from rest_framework_simplejwt.views import TokenObtainPairView
+from .throttles import LoginRateThrottle
 
 
 class RegisterView(APIView):
@@ -48,3 +50,7 @@ class ChangePasswordView(generics.GenericAPIView):
             {"detail": "Password changed successfully."},
             status=status.HTTP_200_OK,
         )
+
+
+class LoginView(TokenObtainPairView):
+    throttle_classes = [LoginRateThrottle]
