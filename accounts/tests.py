@@ -4,7 +4,8 @@ from django.test import TestCase, override_settings
 from rest_framework import status
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
-
+from urllib.parse import parse_qs, urlparse
+from django.core import mail
 
 User = get_user_model()
 
@@ -289,3 +290,189 @@ class LoginRateLimitTests(TestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+
+
+
+
+@override_settings(
+    EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+    PASSWORD_RESET_URL="http://localhost:3000/reset-password/",
+)
+class PasswordResetTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.reset_url = "/accounts/password-reset/"
+        self.confirm_url = "/accounts/password-reset/confirm/"
+        self.email = "reset@example.com"
+        self.password = "CurrentPassword123!"
+
+        self.user = User.objects.create_user(
+            email=self.email,
+            password=self.password,
+            display_name="Reset User",
+        )
+
+    def request_reset(self, email=None):
+        return self.client.post(
+            self.reset_url,
+            {"email": email or self.email},
+            format="json",
+        )
+
+    def get_reset_data(self):
+        self.request_reset()
+        self.assertEqual(len(mail.outbox), 1)
+
+        email_body = mail.outbox[0].body
+        reset_link = next(
+            line for line in email_body.splitlines()
+            if line.startswith(
+                "http://localhost:3000/reset-password/"
+            )
+        )
+        query = parse_qs(urlparse(reset_link).query)
+
+        return {
+            "uid": query["uid"][0],
+            "token": query["token"][0],
+        }
+
+    def test_reset_request_sends_email(self):
+        response = self.request_reset()
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, [self.email])
+        self.assertEqual(
+            mail.outbox[0].subject,
+            "TaskForge - Password Reset",
+        )
+
+    def test_reset_request_for_unknown_email_sends_no_email(self):
+        response = self.request_reset("unknown@example.com")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_reset_request_returns_generic_response(self):
+        existing_response = self.request_reset(self.email)
+        unknown_response = self.request_reset("unknown@example.com")
+
+        self.assertEqual(
+            existing_response.status_code,
+            unknown_response.status_code,
+        )
+        self.assertEqual(
+            existing_response.data,
+            unknown_response.data,
+        )
+
+    def test_reset_request_with_empty_email(self):
+        response = self.client.post(
+            self.reset_url,
+            {"email": ""},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_password_reset_confirm_success(self):
+        reset_data = self.get_reset_data()
+        new_password = "BrandNewPassword456!"
+
+        response = self.client.post(
+            self.confirm_url,
+            {
+                **reset_data,
+                "new_password": new_password,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password(new_password))
+        self.assertFalse(self.user.check_password(self.password))
+        self.assertNotEqual(self.user.password, new_password)
+
+    def test_password_reset_rejects_invalid_token(self):
+        reset_data = self.get_reset_data()
+        reset_data["token"] = "invalid-token"
+
+        response = self.client.post(
+            self.confirm_url,
+            {
+                **reset_data,
+                "new_password": "BrandNewPassword456!",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password(self.password))
+
+    def test_password_reset_rejects_invalid_uid(self):
+        response = self.client.post(
+            self.confirm_url,
+            {
+                "uid": "invalid-uid",
+                "token": "invalid-token",
+                "new_password": "BrandNewPassword456!",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password(self.password))
+
+    def test_password_reset_requires_all_fields(self):
+        response = self.client.post(
+            self.confirm_url,
+            {"uid": "some-uid", "token": "some-token"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_password_reset_rejects_weak_password(self):
+        reset_data = self.get_reset_data()
+
+        response = self.client.post(
+            self.confirm_url,
+            {
+                **reset_data,
+                "new_password": "123",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password(self.password))
+
+    def test_password_reset_token_invalid_after_password_change(self):
+        reset_data = self.get_reset_data()
+
+        self.user.set_password("ChangedPassword789!")
+        self.user.save(update_fields=["password"])
+
+        response = self.client.post(
+            self.confirm_url,
+            {
+                **reset_data,
+                "new_password": "BrandNewPassword456!",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("ChangedPassword789!"))
