@@ -8,6 +8,7 @@ from .views import (
     LoginView,
     PasswordResetView,
     PasswordResetConfirmView,
+    VerifyEmailView
 )
 
 app_name = "accounts"
@@ -20,4 +21,5 @@ urlpatterns = [
     path("change-password/",ChangePasswordView.as_view(),name="change-password",),
     path("password-reset/",PasswordResetView.as_view(),name="password-reset",),
     path("password-reset/confirm/",PasswordResetConfirmView.as_view(),name="password-reset-confirm",),
+    path("verify-email/", VerifyEmailView.as_view(), name="verify-email"),
 ]

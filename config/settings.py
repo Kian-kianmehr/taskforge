@@ -136,3 +136,4 @@ DEFAULT_FROM_EMAIL = os.getenv(
     EMAIL_HOST_USER,
 )
 PASSWORD_RESET_URL = "http://localhost:3000/reset-password/"
+EMAIL_VERIFICATION_URL = "http://localhost:3000/verify-email/"
