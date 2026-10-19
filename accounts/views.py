@@ -1,3 +1,4 @@
+
 # Django imports
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -15,9 +16,12 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-# JWT authentication and local application imports
+# JWT authentication imports
 from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.exceptions import TokenError
 
+# Local application imports
 from .serializers import (
     ChangePasswordSerializer,
     RegisterSerializer,
@@ -28,7 +32,6 @@ from .throttles import LoginRateThrottle
 
 # Use the custom user model configured in Django settings.
 User = get_user_model()
-
 
 
 class RegisterView(APIView):
@@ -185,7 +188,13 @@ class PasswordResetConfirmView(APIView):
         try:
             user_id = urlsafe_base64_decode(uid).decode()
             user = User.objects.get(pk=user_id, is_active=True)
-        except (ValueError, TypeError, OverflowError, UnicodeDecodeError, User.DoesNotExist):
+        except (
+            ValueError,
+            TypeError,
+            OverflowError,
+            UnicodeDecodeError,
+            User.DoesNotExist,
+        ):
             return Response(
                 {"detail": "Invalid or expired reset link."},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -263,5 +272,34 @@ class VerifyEmailView(APIView):
 
         return Response(
             {"detail": "Email verified successfully."},
+            status=status.HTTP_200_OK,
+        )
+
+
+class LogoutView(APIView):
+    """Blacklist a refresh token to log the user out."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        refresh_token = request.data.get("refresh")
+
+        if not refresh_token:
+            return Response(
+                {"detail": "Refresh token is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            token = RefreshToken(refresh_token)
+            token.blacklist()
+        except TokenError:
+            return Response(
+                {"detail": "Invalid or expired refresh token."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(
+            {"detail": "Successfully logged out."},
             status=status.HTTP_200_OK,
         )
