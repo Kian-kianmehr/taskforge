@@ -1,72 +1,75 @@
 # TaskForge
 
-A project management REST API built with Django and Django REST Framework.
+TaskForge is a Django REST API for collaborative project and task management.
 
-## Tech Stack
+## Features
 
-- Python
-- Django
-- Django REST Framework
-- Simple JWT
-- PostgreSQL
-- Git & GitHub
-
-## Overview
-
-TaskForge is a backend engineering project focused on REST API design, authentication, authorization, relational data modeling, automated testing, and maintainable application architecture.
-
-## Current Progress
-
-### Completed: Accounts API
-
-- Custom email-based user model
-- User registration and email verification
-- JWT login and token refresh
-- Current-user profile endpoint
-- Password change and password reset
-- Login rate limiting
-- Refresh-token revocation on logout
-- Automated account test suite
-- Authentication API documentation
-
-### Next: Project Domain
-
-The next milestone is to implement the project and membership data models, database constraints, migrations, and model tests before adding project REST endpoints.
-
-Track the work in [Issue #1](https://github.com/Kian-kianmehr/taskforge/issues/1).
-
-## Planned Development
-
-- Project creation, retrieval, update, and archiving
+- Email-based accounts, email verification, JWT authentication and password recovery
+- Project creation, updates, archiving and restoration
 - Project membership management
-- Task management and assignment
-- Object-level authorization and validation
-- Filtering, ordering, and pagination
-- API documentation
-- PostgreSQL integration
-- CI, Docker, and deployment
+- Task creation, assignment, status updates and due dates
+- Owner/member/assignee authorization
+- Filtering, search, ordering and pagination
+- OpenAPI schema and Swagger UI
+- Automated tests and GitHub Actions CI
+- SQLite for local development and PostgreSQL support through Docker Compose
 
-## Development
+## Quick start
 
-Install dependencies:
+Requirements: Python 3.12+.
 
 ```bash
+git clone https://github.com/Kian-kianmehr/taskforge.git
+cd taskforge
+python -m venv .venv
 pip install -r requirements.txt
-```
-
-Run migrations and start the development server:
-
-```bash
+cp .env.example .env
 python manage.py migrate
 python manage.py runserver
 ```
 
-Run tests:
+The example environment uses SQLite and console email delivery. Configure SMTP variables in .env to send real emails.
+
+## API
+
+- Authentication: /accounts/
+- Projects and tasks: /api/
+- Swagger UI: /api/docs/
+- OpenAPI schema: /api/schema/
+- Admin: /admin/
+
+See docs/api.md, docs/authentication.md, and docs/requirements.md.
+
+## Tests
 
 ```bash
-python manage.py test
+python manage.py check
+python manage.py makemigrations --check --dry-run
+python manage.py test accounts projects
 ```
 
-## Project Status
+GitHub Actions runs these checks on pushes to master.
 
-Under active development. The accounts foundation is implemented; project and task management are the next development phases.
+## Docker
+
+Copy .env.example to .env, set a unique DJANGO_SECRET_KEY and DB_PASSWORD, then run:
+
+```bash
+docker compose up --build
+```
+
+Compose starts PostgreSQL and Django with Gunicorn. Set DJANGO_DEBUG=False and configure DJANGO_ALLOWED_HOSTS for production-like use. Use HTTPS and a managed secret store for a public deployment.
+
+## Authorization rules
+
+- Owners manage project settings and memberships.
+- Owners and members can view project data and create tasks.
+- Only the owner or current assignee can edit a task.
+- Only the project owner can delete a task.
+- Project deletion archives instead of physically deleting.
+- Archived projects are read-only until restored.
+- Task assignees must be the project owner or a current member.
+
+## Status
+
+MVP backend API implemented. See CI for the latest automated verification.
