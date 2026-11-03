@@ -1,6 +1,6 @@
 # TaskForge
 
-TaskForge is a collaborative project and task management application. It provides a REST API for managing projects, memberships, and tasks. A React-based web frontend is also being developed for the platform.
+TaskForge is a collaborative project and task management application. It provides a REST API for managing projects, memberships, and tasks, alongside a web frontend for interacting with the platform.
 
 ## Features
 
@@ -20,11 +20,9 @@ TaskForge is a collaborative project and task management application. It provide
 
 ### Frontend
 
-The frontend is being built with **React** and **Vite** to provide the user-facing interface for working with projects and tasks.
+The web client is built with **React** and **Vite** and provides the user-facing interface for working with projects and tasks.
 
-AI tools assisted with frontend implementation and UI development. They were used as development aids; the resulting code is intended to remain reviewable and maintainable as part of the project.
-
-> **Note:** The frontend source is not currently included in the `master` branch. The setup instructions below therefore cover the backend only.
+The frontend was developed with the assistance of AI tools. AI was used as a development aid for implementation and UI work; the resulting code is part of the project and can be reviewed and maintained like the rest of the codebase.
 
 ## Technology Stack
 
@@ -33,7 +31,7 @@ AI tools assisted with frontend implementation and UI development. They were use
 | Backend | Python, Django, Django REST Framework |
 | Authentication | JSON Web Tokens (JWT) |
 | API documentation | OpenAPI, drf-spectacular, Swagger UI |
-| Frontend (in development) | React, Vite |
+| Frontend | React, Vite |
 | Database | SQLite, PostgreSQL |
 | Deployment | Docker, Docker Compose, Gunicorn |
 | Quality | Django tests, GitHub Actions |
@@ -46,6 +44,7 @@ taskforge/
 ├── config/            # Django project configuration
 ├── docs/              # API, authentication, and requirements docs
 ├── projects/          # Projects, memberships, and tasks
+├── frontend/          # React web client
 ├── .github/           # GitHub Actions workflows
 ├── Dockerfile
 ├── docker-compose.yml
@@ -94,6 +93,20 @@ taskforge/
    ```
 
 The example environment uses SQLite and console email delivery. Configure the SMTP variables in `.env` to send real emails.
+
+### Frontend
+
+**Requirements:** Node.js and npm.
+
+From the repository root:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Vite will print the local development URL in the terminal.
 
 ## API
 
@@ -155,4 +168,4 @@ For a production deployment, set `DJANGO_DEBUG=False`, configure `DJANGO_ALLOWED
 
 ## Project Status
 
-The backend API and its core project, membership, task, and authentication workflows are implemented. The React frontend is under development with assistance from AI tools and is not yet present in the public `master` branch.
+TaskForge is an actively developed project. The backend API and its core project, membership, task, and authentication workflows are implemented. The React frontend is being developed with AI assistance and is intended to work with the backend API.
