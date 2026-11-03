@@ -17,16 +17,25 @@ class ProjectViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        return Project.objects.annotate(member_count=Count("memberships")).filter(
+        queryset = Project.objects.annotate(member_count=Count("memberships")).filter(
             Q(owner=user) | Q(memberships__user=user)
-        ).distinct().order_by("-created_at")
+        ).distinct()
+        if self.action == "list" and self.request.query_params.get("include_archived") != "true":
+            queryset = queryset.filter(archived_at__isnull=True)
+        return queryset.order_by("-created_at")
 
     def perform_create(self, serializer):
         serializer.save(owner=self.request.user)
 
-    def get_serializer_context(self):
-        context = super().get_serializer_context()
-        return context
+    def perform_update(self, serializer):
+        if serializer.instance.is_archived:
+            raise PermissionDenied("Archived projects are read-only.")
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        if not instance.is_archived:
+            instance.archived_at = timezone.now()
+            instance.save(update_fields=["archived_at", "updated_at"])
 
     @action(detail=True, methods=["post"])
     def archive(self, request, pk=None):
@@ -51,12 +60,12 @@ class ProjectViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get", "post", "delete"], url_path="members")
     def members(self, request, pk=None):
         project = self.get_object()
-        if project.is_archived:
-            raise PermissionDenied("Archived projects are read-only.")
         if request.method == "GET":
             return Response(MembershipSerializer(project.memberships.select_related("user"), many=True).data)
         if project.owner_id != request.user.pk:
             raise PermissionDenied("Only the project owner can manage members.")
+        if project.is_archived:
+            raise PermissionDenied("Archived projects are read-only.")
         if request.method == "POST":
             serializer = AddMemberSerializer(data=request.data, context={"project": project})
             serializer.is_valid(raise_exception=True)
@@ -106,8 +115,6 @@ class TaskViewSet(viewsets.ModelViewSet):
             except (Project.DoesNotExist, ValueError):
                 return context
             context["project"] = project
-        elif self.get_object if False else False:
-            pass
         return context
 
     def perform_create(self, serializer):
