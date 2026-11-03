@@ -1,28 +1,35 @@
 # TaskForge API — Data Model
 
-**Version:** 1.0  
-**Database:** PostgreSQL  
+**Version:** 1.1  
+**Database:** PostgreSQL (SQLite is used for local development by default)  
 **ORM:** Django ORM
 
 ## 1. Design Principles
 
-- Use Django's built-in user model through `settings.AUTH_USER_MODEL`.
+- Use the custom user model defined by `accounts.User`, referenced through `settings.AUTH_USER_MODEL` in relationships and migrations.
 - Use explicit foreign-key relationships.
-- Use a separate membership table because membership has its own lifecycle and permissions.
-- Use soft deletion for projects through an archive timestamp.
-- Use database constraints for rules that can be enforced locally in the database.
-- Validate cross-table business rules in the application and test them.
+- Use a separate membership table because membership has its own lifecycle.
+- Archive projects through a nullable timestamp rather than physically deleting them.
+- Enforce local data-integrity rules with database constraints.
+- Validate cross-table business rules in the application and cover them with tests.
 
 ## 2. Entities
 
 ### 2.1 User
 
-Use Django's configured user model rather than creating a custom user table without a demonstrated need.
+TaskForge defines a custom email-based user model in `accounts.User`. It extends Django's `AbstractBaseUser` and `PermissionsMixin`.
 
-Relevant fields are provided by the configured user model, including a primary key, username or other login identifier, email where configured, and password hash.
+Relevant fields include:
+- `id`: primary key
+- `email`: unique login identifier
+- `display_name`: optional display name
+- `password`: Django-managed password hash
+- `is_active` and `is_staff`
+- `created_at`: account creation timestamp
+
+Other models must reference this model through `settings.AUTH_USER_MODEL`, rather than importing the concrete model directly.
 
 Relationships:
-
 - A user can own multiple projects.
 - A user can have multiple project memberships.
 - A user can be assigned multiple tasks.
@@ -32,20 +39,20 @@ Relationships:
 | Field | Type / rule | Purpose |
 |---|---|---|
 | `id` | Primary key | Unique project identifier |
-| `owner_id` | Foreign key to User, required | Project owner |
-| `name` | String, required | Project name |
+| `owner_id` | Foreign key to `accounts.User`, required | Project owner |
+| `name` | String, max 150, required | Project name |
 | `description` | Text, optional | Project details |
 | `created_at` | Timestamp | Creation time |
 | `updated_at` | Timestamp | Last update time |
 | `archived_at` | Nullable timestamp | Archive state |
 
 Rules:
-
 - `archived_at = NULL` means the project is active.
 - A non-null `archived_at` means the project is archived.
 - Archiving does not delete tasks or memberships.
 - Only the owner can archive or restore the project.
 - Default active-project queries must exclude archived projects.
+- The `is_archived` property derives its value from `archived_at`.
 
 ### 2.3 ProjectMembership
 
@@ -55,18 +62,16 @@ This entity represents a registered user's membership in a project.
 |---|---|---|
 | `id` | Primary key | Unique membership identifier |
 | `project_id` | Foreign key to Project | Associated project |
-| `user_id` | Foreign key to User | Associated user |
+| `user_id` | Foreign key to `accounts.User` | Associated user |
 | `joined_at` | Timestamp | Membership creation time |
 
 Rules:
-
-- A unique constraint on `(project_id, user_id)` prevents duplicate membership.
-- The project owner is represented by `Project.owner_id`; they do not need a duplicate membership record.
+- A unique database constraint on `(project_id, user_id)` prevents duplicate membership.
+- The project owner is represented by `Project.owner`; they do not need a duplicate membership record.
 - Removing a membership revokes the user's member-level access.
 - An owner cannot be removed through the member-removal operation.
 - Only the owner can manage membership in the MVP.
-
-There is no `role` field in this table for the MVP because members have one uniform member role. Ownership is represented by `Project.owner_id`. A separate role field can be added if additional member roles become necessary.
+- The MVP has one uniform member role; ownership is represented by `Project.owner`.
 
 ### 2.4 Task
 
@@ -83,13 +88,11 @@ There is no `role` field in this table for the MVP because members have one unif
 | `due_date` | Nullable date | Optional deadline |
 
 Allowed status values:
-
 - `todo`
 - `in_progress`
 - `done`
 
 Rules:
-
 - Every task belongs to exactly one project.
 - A task may be unassigned.
 - If assigned, the assignee must be the project's owner or a current project member.
@@ -98,50 +101,41 @@ Rules:
 
 ## 3. Relationships
 
-- User `1 → many` Project through `Project.owner_id`.
+- User `1 → many` Project through `Project.owner`.
 - User `many ↔ many` Project through `ProjectMembership`.
 - Project `1 → many` Task.
 - User `1 → many` Task through the optional assignee relationship.
 
-The owner-to-project relationship and the membership relationship are separate. A user can own one project and belong to another.
+The owner-to-project relationship and membership relationship are separate. A user can own a project and belong to another project.
 
 ## 4. Deletion and Retention
 
-- Project deletion is implemented as archiving, not physical deletion.
-- Existing tasks and memberships remain attached to an archived project.
-- Restoring a project makes it active again without recreating its related data.
+- Project deletion is implemented as archiving at the API/business-rule level, not physical deletion.
+- The database currently cascades hard deletion of a Project to its memberships.
+- Existing tasks and memberships should remain attached to an archived project.
+- Restoring a project makes it active again without recreating related data.
 - Removing a membership does not automatically delete tasks assigned to that user.
 - If a former member remains assigned to a task, they no longer have member access. The owner should reassign that task if necessary.
 
 ## 5. Integrity Constraints
 
 Enforce these rules where practical:
-
-1. `Project.owner_id` must reference an existing user.
-2. `ProjectMembership.project_id` and `ProjectMembership.user_id` must reference existing records.
-3. `(project_id, user_id)` must be unique in `ProjectMembership`.
-4. `Task.project_id` must reference an existing project.
-5. `Task.assignee_id` may be null; if non-null, it must reference an existing user.
+1. `Project.owner_id` references an existing user.
+2. Membership project and user references must be valid.
+3. `(project_id, user_id)` is unique in `ProjectMembership`.
+4. `Task.project_id` references an existing project.
+5. `Task.assignee_id` may be null; if non-null, it references an existing user.
 6. Task status must be one of the allowed values.
 
 The rule that an assignee must belong to the same project is a cross-table rule. It requires application-level validation and automated tests unless a more advanced database enforcement strategy is deliberately introduced.
 
 ## 6. Indexing Considerations
 
-Start with the foreign-key indexes provided by Django and PostgreSQL. Add targeted indexes only when query patterns justify them.
-
-Potential candidates after measurement:
-
-- Tasks by project and status.
-- Tasks by assignee.
-- Active projects by owner and archive state.
-
-Do not add indexes indiscriminately: they consume storage and add overhead to writes.
+The Project model includes a composite index on owner and archive timestamp to support common owner-scoped active-project queries. Django also creates indexes for foreign keys. Add further indexes only when query patterns and measurements justify them.
 
 ## 7. Open Technical Considerations
 
 Before production hardening, review:
-
 - Whether task deletion should follow the same authorization policy as task editing.
 - Whether project owners need a membership-history record.
 - Whether reassignment and membership removal need transactional handling.
